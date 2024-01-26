@@ -1,0 +1,467 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  This template creates an EC2 instance with an Application Load Balancer (ALB) and Auto Scaling Group (ASG), 
+  following best practices for scalability and high availability. It includes parameterization for all key components.
+
+Parameters:
+
+  EnvName:
+    Type: String
+    Description: The deployment environment name, used to differentiate resources in multiple environments.
+
+  VPCName:
+    Type: String
+    Description: The ID of the VPC.
+
+  VPCCIDR:
+    Type: String
+    Description: The CIDR block for the VPC.
+    Default: 172.0.0.0/16
+
+  SubnetPublic1:
+    Type: String
+    Description: Public subnet in AZ-a
+
+  SubnetPublic2:
+    Type: String
+    Description: Public subnet in AZ-b
+
+  SubnetPrivate1:
+    Type: String
+    Description: Private subnet in AZ-a
+
+  SubnetPrivate2:
+    Type: String
+    Description: Private subnet in AZ-b
+
+  AmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    Description: The ID of the AMI to use for the EC2 instance.
+
+  InstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t2.micro
+    ConstraintDescription: must be a valid EC2 instance type.
+
+  KeyPairName:
+    Type: String
+    Default: bastion-access
+    Description: The name of the key pair to use for the instance.
+
+  MinReplicas:
+    Type: Number
+    Default: 1
+    Description: Minimum number of instances in the ASG
+
+  MaxReplicas:
+    Type: Number
+    Default: 2
+    Description: Maximum number of instances in the ASG
+
+  DesiredInstanceCount:
+    Type: Number
+    Default: 1
+    Description: Desired number of instances in the ASG
+
+  ScalingEnabled:
+    Type: String
+    Default: true
+    Description: Enable scaling
+
+  TargetValue:
+    Type: Number
+    Default: 60
+    Description: Target value for scaling
+
+  HealthCheckPath:
+    Type: String
+    Default: "/ping"
+    Description: Health check path
+
+  HealthCheckPort:
+    Type: Number
+    Default: 80
+    Description: Health check port
+
+  SSLCertificateArn:
+    Type: String
+    Default: arn:aws:acm:us-east-1:356594127157:certificate/ac0b65c5-37f2-411f-8930-94d9bd91090d
+    Description: SSL certificate ARN
+
+  ArtifactBucketName:
+    Type: String
+    Description: S3 Bucket name which stores the build files
+
+  ApplicationArtifact:
+    Type: String
+    Description: Application build artifact to be deployed
+
+Conditions:
+  
+  ShouldScale: !Equals [!Ref ScalingEnabled, "true"]
+
+Resources:
+
+  # Network
+  ELBSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Security group of load balancer'
+      VpcId: !Ref VPCName
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: "52.95.132.0/22"
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: "52.119.224.0/20"
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: "52.95.128.0/17"
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0" # Allow access from all sources on port 443
+  
+  LTSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Security group of EC2 instances'
+      VpcId: !Ref VPCName
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: "52.95.132.0/22"
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: "52.119.224.0/20"
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: "52.95.128.0/17"
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref VPCCIDR
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 443
+          CidrIp: !Ref VPCCIDR
+
+  # EC2 Instance
+  EC2InstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: EC2InstanceRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:*'
+                  - 's3-object-lambda:*'
+                  - 'logs:*'
+                  - 'autoscaling:*'
+                  - 'ec2:*'
+                  - 'ssm:*'
+                  - 'ssmmessages:*'
+                  - 'ec2messages:*'
+                  - 'kms:Decrypt'
+                  - 'sts:AssumeRole'
+                  - 'ses:SendEmail'
+                  - 'ses:SendRawEmail'
+                  - 'secretsmanager:*'
+                  - 'cognito-idp:SignUp'
+                  - 'cognito-idp:InitiateAuth'
+                  - 'cognito-idp:Get*'
+                  - 'cognito-idp:List*'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:DescribeTable'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:UpdateItem'
+                Resource: '*'
+  
+  IamInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+      - !Ref EC2InstanceRole
+  
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub "EC2LaunchTemplate-${EnvName}"
+      LaunchTemplateData:
+        IamInstanceProfile:
+          Arn: !GetAtt
+            - IamInstanceProfile
+            - Arn
+        DisableApiTermination: true
+        ImageId: !Ref AmiId
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref KeyPairName
+        SecurityGroupIds:
+          - !Ref LTSecurityGroup
+        UserData: !Base64
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            echo '[START] User data script'
+            sudo yum update
+            sudo amazon-linux-extras install epel
+
+            echo '[START] Logs'
+            sudo yum install -y awslogs
+            sudo sed -i 's/region = .*/region = ${AWS::Region}/' /etc/awslogs/awscli.conf
+            sudo sed -i 's|/var/log/messages|/var/log/beapp-${EnvName}.log|' /etc/awslogs/awslogs.conf
+            sudo systemctl start awslogsd
+            sudo systemctl enable awslogsd.service
+            echo '[END] Logs'
+
+            echo '[START] Supervisor'
+            sudo yum -y install supervisor
+            sudo systemctl start supervisord
+            sudo systemctl enable supervisord
+            echo '[END] Supervisor'
+
+            echo '[START] Golang Backend application'
+            mkdir /home/ec2-user/beapp
+            aws s3 cp s3://${ArtifactBucketName}/be-build/${ApplicationArtifact} /home/ec2-user/beapp
+            unzip -o /home/ec2-user/beapp/${ApplicationArtifact} -d /home/ec2-user/beapp
+
+            echo "[program:beapp]" | sudo tee /etc/supervisord.d/beapp.ini > /dev/null
+            echo "command=/home/ec2-user/beapp/main" | sudo tee -a /etc/supervisord.d/beapp.ini > /dev/null
+            echo "directory=/home/ec2-user/beapp" | sudo tee -a /etc/supervisord.d/beapp.ini > /dev/null
+            echo "autostart=true" | sudo tee -a /etc/supervisord.d/beapp.ini > /dev/null
+            echo "autorestart=true" | sudo tee -a /etc/supervisord.d/beapp.ini > /dev/null
+            echo "user=root" | sudo tee -a /etc/supervisord.d/beapp.ini > /dev/null
+            echo "redirect_stderr=true" | sudo tee -a /etc/supervisord.d/beapp.ini > /dev/null
+            echo "stdout_logfile=/var/log/beapp-${EnvName}.log" | sudo tee -a /etc/supervisord.d/beapp.ini > /dev/null
+            echo "stderr_logfile=/var/log/beapp-${EnvName}_error.log" | sudo tee -a /etc/supervisord.d/beapp.ini > /dev/null
+
+            sudo systemctl restart supervisord
+            sudo supervisorctl reread
+            sudo supervisorctl update
+            
+            # Wait for the application to start (adjust the sleep duration if needed)
+            sleep 10
+
+            # Send a resource signal indicating success
+            /opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackName} --resource AppServerGroup --region ${AWS::Region}
+            echo '[END] Golang Backend application'
+
+            echo '[END] User data script'
+
+  # Auto Scaling
+  AppServerGroup:
+    DependsOn:
+      - LaunchTemplate
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: # Private Subnet
+        - !Ref SubnetPrivate1
+        - !Ref SubnetPrivate2
+      TargetGroupARNs:
+        - !Ref AppTargetGroup
+      LaunchTemplate: 
+        LaunchTemplateName: !Sub "EC2LaunchTemplate-${EnvName}"
+        Version: 
+          Fn::GetAtt: LaunchTemplate.LatestVersionNumber
+      MinSize: !Ref 'MinReplicas'
+      MaxSize: !Ref 'MaxReplicas'
+      DesiredCapacity: !Ref 'DesiredInstanceCount'
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        PauseTime: PT5M
+        WaitOnResourceSignals: true
+        MinInstancesInService: !Ref 'MinReplicas'
+        SuspendProcesses:
+          - AZRebalance
+          - ReplaceUnhealthy
+
+  AppServerScalingPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Condition: ShouldScale
+    Properties:
+      AutoScalingGroupName: !Ref AppServerGroup
+      EstimatedInstanceWarmup: 600
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: !Ref TargetValue
+
+  # Load Balancing
+  AppLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      SecurityGroups: 
+        - !Ref ELBSecurityGroup
+      Subnets: # Public Subnet
+        - !Ref SubnetPublic1
+        - !Ref SubnetPublic2
+
+  AppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckProtocol: HTTP
+      Port: !Ref HealthCheckPort
+      Protocol: HTTP
+      TargetType: "instance"
+      Matcher:
+        HttpCode: "200"
+      VpcId: !Ref VPCName
+
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref AppLoadBalancer
+      Port: 80
+      Protocol: "HTTP"
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AppTargetGroup
+
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref AppLoadBalancer
+      Port: 443
+      Protocol: "HTTPS"
+      Certificates:
+        - CertificateArn: !Ref SSLCertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AppTargetGroup
+
+Outputs:
+
+  AppServerGroup:
+    Description: The name of the Auto Scaling Group.
+    Value: !Ref AppServerGroup
+  
+  AppServerGroupARN:
+    Description: The ARN of the Auto Scaling Group.
+    Value: !GetAtt AppServerGroup.Arn
+  
+  AppLoadBalancer:
+    Description: The name of the Load Balancer.
+    Value: !Ref AppLoadBalancer
+  
+  LoadBalancerARN:
+    Description: The ARN of the Load Balancer.
+    Value: !Ref AppLoadBalancer
+
+  LoadBalancerDNSName:
+    Description: The DNS name of the Load Balancer.
+    Value: !GetAtt AppLoadBalancer.DNSName
+  
+  AppTargetGroup:
+    Description: The name of the Target Group.
+    Value: !Ref AppTargetGroup
+  
+  TargetGroupARN:
+    Description: The ARN of the Target Group.
+    Value: !Ref AppTargetGroup
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Environment and Network Configuration"
+        Parameters:
+          - EnvName
+          - VPCName
+          - VPCCIDR
+          - SubnetPublic1
+          - SubnetPublic2
+          - SubnetPrivate1
+          - SubnetPrivate2
+      - Label:
+          default: "EC2 and Auto Scaling Configuration"
+        Parameters:
+          - AmiId
+          - InstanceType
+          - KeyPairName
+          - MinReplicas
+          - MaxReplicas
+          - DesiredInstanceCount
+          - ScalingEnabled
+          - TargetValue
+      - Label:
+          default: "Load Balancer and SSL Configuration"
+        Parameters:
+          - HealthCheckPath
+          - HealthCheckPort
+          - SSLCertificateArn
+      - Label:
+          default: "Artifact Storage Configuration"
+        Parameters:
+          - ArtifactBucketName
+          - ApplicationArtifact
+
+    ParameterLabels:
+      EnvName:
+        default: "Environment Name"
+      VPCName:
+        default: "VPC ID"
+      VPCCIDR:
+        default: "VPC CIDR Block"
+      SubnetPublic1:
+        default: "Public Subnet AZ-a"
+      SubnetPublic2:
+        default: "Public Subnet AZ-b"
+      SubnetPrivate1:
+        default: "Private Subnet AZ-a"
+      SubnetPrivate2:
+        default: "Private Subnet AZ-b"
+      AmiId:
+        default: "AMI ID"
+      InstanceType:
+        default: "EC2 Instance Type"
+      KeyPairName:
+        default: "Key Pair Name"
+      MinReplicas:
+        default: "Minimum ASG Replicas"
+      MaxReplicas:
+        default: "Maximum ASG Replicas"
+      DesiredInstanceCount:
+        default: "Desired ASG Instance Count"
+      ScalingEnabled:
+        default: "Enable Scaling"
+      TargetValue:
+        default: "Scaling Target Value"
+      HealthCheckPath:
+        default: "Health Check Path"
+      HealthCheckPort:
+        default: "Health Check Port"
+      SSLCertificateArn:
+        default: "SSL Certificate ARN"
+      ArtifactBucketName:
+        default: "Artifact S3 Bucket Name"
+      ApplicationArtifact:
+        default: "Application Artifact"

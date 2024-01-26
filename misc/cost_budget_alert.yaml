@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  This template creates an AWS Budget to monitor daily costs and send notifications.
+
+Parameters:
+  BudgetThreshold:
+    Description: "Budget threshold for daily spend in USD"
+    Type: Number
+    Default: 10
+
+  ThresholdPercentage:
+    Description: "Percentage of budgeted amount before sending a notification"
+    Type: Number
+    MinValue: 0
+    MaxValue: 100
+    Default: 80
+
+  Email1:
+    Description: "Primary email address to receive budget alerts"
+    Type: String
+    AllowedPattern: "^[_A-Za-z0-9-\\+]+(\\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\\.[A-Za-z0-9]+)*(\\.[A-Za-z]{2,})$"
+
+  Email2:
+    Description: "Additional email address to receive budget alerts (optional)"
+    Type: String
+    AllowedPattern: "^[_A-Za-z0-9-\\+]+(\\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\\.[A-Za-z0-9]+)*(\\.[A-Za-z]{2,})$"
+    Default: ""
+
+Resources:
+  
+  # Define the AWS Budget.
+  Budget:
+    Type: 'AWS::Budgets::Budget'
+    Properties:
+      Budget:
+        BudgetType: COST
+        TimeUnit: DAILY
+        BudgetLimit:
+          Amount: !Ref BudgetThreshold
+          Unit: USD
+        CostFilters: {}
+        CostTypes:
+          IncludeCredit: true
+          IncludeOtherSubscription: true
+          IncludeRecurring: true
+          IncludeRefund: true
+          IncludeSubscription: true
+          IncludeSupport: true
+          IncludeUpfront: true
+          UseAmortized: false
+          UseBlended: false
+      NotificationsWithSubscribers:
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: !Ref ThresholdPercentage
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref Email1
+              SubscriptionType: EMAIL
+            - Address: !If [!Equals [!Ref Email2, ''], !Ref AWS::NoValue, !Ref Email2]
+              SubscriptionType: EMAIL
+
+Outputs:
+  BudgetId:
+    Value: !Ref Budget
+    Description: The ID of the AWS Budget created
