@@ -1,0 +1,233 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  This template creates a DynamoDB table with provisioned capacity and auto-scaling configurations.
+  It includes parameters for environment setup, capacity units, and auto-scaling settings.
+
+Parameters:
+
+  EnvName:
+    Type: String
+    Description: The deployment environment name, used to differentiate resources in multiple environments.
+
+  PrimaryKeyName:
+    Type: String
+    Description: Name of the primary key attribute for the DynamoDB table.
+
+  PrimaryKeyType:
+    Type: String
+    Default: 'S'
+    AllowedValues: ['S', 'N', 'B']
+    Description: Type of the primary key attribute (S for string, N for number, B for binary).
+
+  SortKeyName:
+    Type: String
+    Description: Name of the sort key attribute for the DynamoDB table.
+
+  SortKeyType:
+    Type: String
+    Default: 'S'
+    AllowedValues: ['S', 'N', 'B']
+    Description: Type of the sort key attribute (S for string, N for number, B for binary).
+
+  ScalingRoleArn:
+    Type: String
+    Description: ARN of the IAM role for scaling DynamoDB.
+
+  ReadCapacityUnits:
+    Type: Number
+    Default: 10
+    Description: Default read capacity units for the DynamoDB table.
+
+  WriteCapacityUnits:
+    Type: Number
+    Default: 1
+    Description: Default write capacity units for the DynamoDB table.
+
+  MinReadCapacity:
+    Type: Number
+    Default: 10
+    Description: Minimum read capacity for auto scaling.
+
+  MaxReadCapacity:
+    Type: Number
+    Default: 50
+    Description: Maximum read capacity for auto scaling.
+
+  MinWriteCapacity:
+    Type: Number
+    Default: 10
+    Description: Minimum write capacity for auto scaling.
+
+  MaxWriteCapacity:
+    Type: Number
+    Default: 50
+    Description: Maximum write capacity for auto scaling.
+
+  AutoScalingTargetValue:
+    Type: Number
+    Description: Target value for write capacity auto-scaling.
+
+  AutoScalingScaleInCooldown:
+    Type: Number
+    Description: Scale-in cooldown period for write capacity auto-scaling.
+
+  AutoScalingScaleOutCooldown:
+    Type: Number
+    Description: Scale-out cooldown period for write capacity auto-scaling.
+
+  EnableSSE:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable server-side encryption with AWS managed KMS key.
+
+
+Resources:
+
+  # Define the DynamoDB table
+  DDBTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: !Sub "GenericTable-${EnvName}"
+      AttributeDefinitions:
+        - AttributeName: !Ref PrimaryKeyName
+          AttributeType: !Ref PrimaryKeyType
+        - AttributeName: !Ref SortKeyName
+          AttributeType: !Ref SortKeyType
+      KeySchema:
+        - AttributeName: !Ref PrimaryKeyName
+          KeyType: 'HASH'
+        - AttributeName: !Ref SortKeyName
+          KeyType: 'RANGE'
+      ProvisionedThroughput: 
+        ReadCapacityUnits: !Ref ReadCapacityUnits
+        WriteCapacityUnits: !Ref WriteCapacityUnits
+      SSESpecification:
+        Enabled: !If [EnableSSE, 'true', 'false']
+        SSEType: 'KMS'
+
+  # Auto-scaling setup for the DynamoDB table's write capacity
+  TableWriteCapacityScalableTarget:
+    Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
+    DependsOn: DDBTable
+    Properties:
+      MinCapacity: !Ref MinWriteCapacity
+      MaxCapacity: !Ref MaxWriteCapacity
+      ResourceId: !Sub "table/${DDBTable}"
+      RoleARN: !Ref ScalingRoleArn
+      ScalableDimension: 'dynamodb:table:WriteCapacityUnits'
+      ServiceNamespace: 'dynamodb'
+
+  TableWriteScalingPolicy:
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: 'WriteAutoScalingPolicy'
+      PolicyType: 'TargetTrackingScaling'
+      ScalingTargetId: !Ref TableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: !Ref AutoScalingTargetValue
+        ScaleInCooldown: !Ref AutoScalingScaleInCooldown
+        ScaleOutCooldown: !Ref AutoScalingScaleOutCooldown
+        PredefinedMetricSpecification:
+          PredefinedMetricType: 'DynamoDBWriteCapacityUtilization'
+
+  # Auto-scaling setup for the DynamoDB table's read capacity
+  TableReadCapacityScalableTarget:
+    Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
+    DependsOn: DDBTable
+    Properties:
+      MinCapacity: !Ref MinReadCapacity
+      MaxCapacity: !Ref MaxReadCapacity
+      ResourceId: !Sub "table/${DDBTable}"
+      RoleARN: !Ref ScalingRoleArn
+      ScalableDimension: 'dynamodb:table:ReadCapacityUnits'
+      ServiceNamespace: 'dynamodb'
+
+  TableReadScalingPolicy:
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: 'ReadAutoScalingPolicy'
+      PolicyType: 'TargetTrackingScaling'
+      ScalingTargetId: !Ref TableReadCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: !Ref AutoScalingTargetValue
+        ScaleInCooldown: !Ref AutoScalingScaleInCooldown
+        ScaleOutCooldown: !Ref AutoScalingScaleOutCooldown
+        PredefinedMetricSpecification:
+          PredefinedMetricType: 'DynamoDBReadCapacityUtilization'
+
+
+Outputs:
+
+  TableName:
+    Description: "The name of the DynamoDB table."
+    Value: !Ref DDBTable
+
+  TableArn:
+    Description: "The ARN of the DynamoDB table."
+    Value: !GetAtt DDBTable.Arn
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Environment Configuration"
+        Parameters:
+          - EnvName
+      - Label:
+          default: "DynamoDB Table Configuration"
+        Parameters:
+          - PrimaryKeyName
+          - PrimaryKeyType
+          - SortKeyName
+          - SortKeyType
+          - ReadCapacityUnits
+          - WriteCapacityUnits
+          - EnableSSE
+      - Label:
+          default: "Auto Scaling Configuration"
+        Parameters:
+          - ScalingRoleArn
+          - MinReadCapacity
+          - MaxReadCapacity
+          - MinWriteCapacity
+          - MaxWriteCapacity
+          - AutoScalingTargetValue
+          - AutoScalingScaleInCooldown
+          - AutoScalingScaleOutCooldown
+    ParameterLabels:
+      EnvName:
+        default: "Environment Name"
+      PrimaryKeyName:
+        default: "Primary Key Name"
+      PrimaryKeyType:
+        default: "Primary Key Type"
+      SortKeyName:
+        default: "Sort Key Name"
+      SortKeyType:
+        default: "Sort Key Type"
+      ReadCapacityUnits:
+        default: "Read Capacity Units"
+      WriteCapacityUnits:
+        default: "Write Capacity Units"
+      EnableSSE:
+        default: "Enable Server-Side Encryption"
+      ScalingRoleArn:
+        default: "Scaling Role ARN"
+      MinReadCapacity:
+        default: "Minimum Read Capacity"
+      MaxReadCapacity:
+        default: "Maximum Read Capacity"
+      MinWriteCapacity:
+        default: "Minimum Write Capacity"
+      MaxWriteCapacity:
+        default: "Maximum Write Capacity"
+      AutoScalingTargetValue:
+        default: "Auto Scaling Target Value"
+      AutoScalingScaleInCooldown:
+        default: "Auto Scaling Scale-In Cooldown"
+      AutoScalingScaleOutCooldown:
+        default: "Auto Scaling Scale-Out Cooldown"

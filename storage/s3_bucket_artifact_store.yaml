@@ -1,0 +1,88 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  This CloudFormation template creates an S3 bucket for storing debain build 
+  artifacts, applies a policy to the bucket for access control, and grants 
+  read access to a specified list of AWS accounts.
+
+Parameters:
+
+  ArtifactBucketName:
+    Type: 'String'
+    Description: 'The name of the artifact bucket. Must be globally unique.'
+    Default: 'artifact-store'
+    AllowedPattern: '^[a-z0-9.-]{3,63}$'
+    ConstraintDescription: 'Bucket name can include numbers, lowercase letters, hyphens, and periods. Must be between 3 and 63 characters.'
+
+  AccountIdList:
+    Type: 'CommaDelimitedList'
+    Description: 'Comma-separated list of AWS account IDs to grant read access to the bucket.'
+
+Resources:
+
+  # S3 Bucket for storing artifacts
+  ArtifactBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: 
+        Ref: ArtifactBucketName
+
+  # Bucket policy to control access, including read access to specified AWS accounts
+  ArtifactBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: 
+        Ref: ArtifactBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: 'AllowSameAccountAccess'
+            Effect: 'Allow'
+            Principal:
+              AWS: 
+                Fn::Sub: arn:aws:iam::${{AWS::AccountId}}:root
+            Action: 's3:*'
+            Resource:
+              Fn::Sub: arn:aws:s3:::${{ArtifactBucket}}/*
+          - Sid: 'AllowExternalAccountReadAccess'
+            Effect: 'Allow'
+            Principal:
+              AWS: 
+                Fn::Join: 
+                  - ','
+                  - Fn::GetAtt: [AccountIdList, Arn]
+            Action: 's3:GetObject'
+            Resource:
+              Fn::Sub: arn:aws:s3:::${{ArtifactBucket}}/*
+
+Outputs:
+
+  ArtifactBucketNameOutput:
+    Description: 'Name of the artifact bucket'
+    Value: 
+      Ref: ArtifactBucket
+    Export:
+      Name: 'ArtifactBucketName'
+
+  ArtifactBucketArn:
+    Description: 'ARN of the artifact bucket'
+    Value: 
+      Fn::GetAtt: [ArtifactBucket, Arn]
+    Export:
+      Name: 'ArtifactBucketArn'
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'Artifact Bucket Configuration'
+        Parameters:
+          - ArtifactBucketName
+          - AccountIdList
+    ParameterLabels:
+      ArtifactBucketName:
+        default: 'Artifact Bucket Name'
+      AccountIdList:
+        default: 'Account IDs for Read Access'

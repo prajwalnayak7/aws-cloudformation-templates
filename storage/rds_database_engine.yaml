@@ -1,0 +1,183 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  This template creates an RDS database instance with customizable configurations 
+  and adheres to best practices for security and scalability.
+
+Parameters:
+  EnvName:
+    Type: 'String'
+    Description: 'The deployment environment name, used to differentiate between dev, staging, and production.'
+
+  VpcId:
+    Description: VPC ID where the database will be deployed.
+    Type: String
+
+  SubnetPrivate1:
+    Description: Private subnet in AZ-a.
+    Type: String
+
+  SubnetPrivate2:
+    Description: Private subnet in AZ-b.
+    Type: String
+
+  EC2SecurityGroup:
+    Description: Security group for the EC2.
+    Type: String
+
+  DBName:
+    Description: Name of the database to create.
+    Type: String
+
+  DBUser:
+    Description: Username for the database.
+    Type: String
+
+  DBPassword:
+    Description: Password for the database.
+    Type: String
+    NoEcho: true
+
+  DBInstanceClass:
+    Description: The compute and memory capacity of the DB instance.
+    Type: String
+    Default: 'db.t2.micro'
+
+  Engine:
+    Description: The database engine to use.
+    Type: String
+    Default: 'mysql'
+    AllowedValues: ['mysql', 'postgres', 'oracle-se2', 'sqlserver-se']
+
+  EngineVersion:
+    Description: Version number of the database engine to use.
+    Type: String
+
+  AllocatedStorage:
+    Description: The amount of storage (in gibibytes) to allocate for the database instance.
+    Type: Number
+    Default: 20
+
+  MultiAZ:
+    Description: Specifies if the database instance is a Multi-AZ deployment.
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+
+  DatabasePort:
+    Description: The port number on which the database will accept connections.
+    Type: Number
+    Default: 3306  # Default 3306 for MySQL, for PostgreSQL use 5432
+
+Resources:
+
+  # RDS database
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: !Ref Engine
+      EngineVersion: !Ref EngineVersion
+      DBName: !Sub "${DBName}-${EnvName}"
+      MasterUsername: !Ref DBUser
+      MasterUserPassword: !Ref DBPassword
+      AllocatedStorage: !Ref AllocatedStorage
+      DBInstanceClass: !Ref DBInstanceClass
+      PubliclyAccessible: false
+      MultiAZ: !Ref MultiAZ
+      EnableCloudwatchLogsExports:
+        - error
+        - general
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      DBSubnetGroupName:
+        Ref: DBSubnetGroup
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for the RDS database
+      SubnetIds:
+        - !Ref SubnetPrivate1
+        - !Ref SubnetPrivate2
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for the RDS database
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref DatabasePort
+          ToPort: !Ref DatabasePort
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+Outputs:
+
+  DBEndpoint:
+    Description: Endpoint URL of the RDS database.
+    Value: !GetAtt DBInstance.Endpoint.Address
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Environment and VPC Configuration"
+        Parameters:
+          - VpcId
+          - SubnetPrivate1
+          - SubnetPrivate2
+          - EC2SecurityGroup
+      - Label:
+          default: "Database Configuration"
+        Parameters:
+          - DBName
+          - DBUser
+          - DBPassword
+          - DBInstanceClass
+          - Engine
+          - EngineVersion
+          - AllocatedStorage
+          - MultiAZ
+          - DatabasePort
+      - Label:
+          default: "Security Configuration"
+        Parameters:
+          - ScalingRoleArn
+          - EnableSSE
+
+    ParameterLabels:
+      VpcId:
+        default: "VPC ID"
+      SubnetPrivate1:
+        default: "Private Subnet 1"
+      SubnetPrivate2:
+        default: "Private Subnet 2"
+      EC2SecurityGroup:
+        default: "EC2 Security Group"
+      DBName:
+        default: "Database Name"
+      DBUser:
+        default: "Database Username"
+      DBPassword:
+        default: "Database Password"
+      DBInstanceClass:
+        default: "DB Instance Class"
+      Engine:
+        default: "Database Engine"
+      EngineVersion:
+        default: "Engine Version"
+      AllocatedStorage:
+        default: "Allocated Storage (GiB)"
+      MultiAZ:
+        default: "Multi-AZ Deployment"
+      DatabasePort:
+        default: "Database Port"
+      ScalingRoleArn:
+        default: "Scaling Role ARN"
+      EnableSSE:
+        default: "Enable Server-Side Encryption"

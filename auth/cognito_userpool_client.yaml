@@ -1,0 +1,195 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  This template creates a fully configurable Amazon Cognito User Pool with best practices. 
+  It includes parameters for all aspects of the user pool and adheres to security and scalability standards.
+
+Parameters:
+
+  EnvName:
+    Type: 'String'
+    Description: 'The deployment environment name, used to differentiate between dev, staging, and production.'
+
+  UserPoolName:
+    Type: String
+    Default: 'UserPool'
+    Description: The name of the Cognito User Pool.
+
+  UserPoolClientName:
+    Type: String
+    Default: 'UserPoolClient'
+    Description: The name of the Cognito User Pool Client.
+
+  ClientSecretEnabled:
+    Type: String
+    Default: false
+
+  AccessTokenValidity:
+    Type: Number
+    Default: 1
+    Description: Access token validity in hours
+
+  RefreshTokenValidity:
+    Type: Number
+    Default: 30
+    Description: Refresh token validity in days
+
+  SenderEmailIdentityArn:
+    Type: String
+    Default: arn:aws:ses:ap-southeast-1:245072801697:identity/hello@company.com
+    Description: The ARN of the verified email identity.
+
+Resources:
+
+  # Cognito User Pool
+  UserPool:
+    Type: 'AWS::Cognito::UserPool'
+    Properties:
+      UserPoolName: !Sub "${UserPoolName}-${EnvName}"
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: admin_only
+            Priority: 1
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: false
+          TemporaryPasswordValidityDays: 1
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: customerID
+          AttributeDataType: String
+          Mutable: false
+          Required: false
+      UsernameAttributes:
+        - email
+      DeletionProtection: ACTIVE
+      EmailConfiguration:
+        SourceArn: !Ref SenderEmailIdentityArn
+      VerificationMessageTemplate:
+        EmailSubject: "Your Account Verification"
+        EmailMessage: |
+          <html>
+            <head>
+              <style>
+                body {
+                  font-family: Arial, sans-serif;
+                  background-color: #f4f4f4;
+                  margin: 0;
+                  padding: 0;
+                }
+                .container {
+                  background-color: #ffffff;
+                  width: 100%;
+                  max-width: 600px;
+                  margin: 30px auto;
+                  padding: 20px;
+                  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                  border-radius: 8px;
+                }
+                .header {
+                  text-align: center;
+                  color: #333333;
+                  font-size: 28px;
+                  margin-bottom: 20px;
+                }
+                .content {
+                  text-align: center;
+                  color: #666666;
+                  font-size: 16px;
+                  line-height: 1.6;
+                }
+                .footer {
+                  text-align: center;
+                  color: #aaaaaa;
+                  font-size: 12px;
+                  margin-top: 30px;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">Welcome to The Company!</div>
+                <div class="content">
+                  Your account has been successfully created.<br>
+                  Please use the following verification code to complete your registration: <strong>{####}</strong><br>
+                  If you did not request this code, please ignore this message.
+                </div>
+                <div class="footer">
+                  &copy; 2024 The Company. All rights reserved.
+                </div>
+              </div>
+            </body>
+          </html>
+
+  # Cognito User Pool Client
+  UserPoolClient:
+    Type: 'AWS::Cognito::UserPoolClient'
+    Properties:
+      ClientName: !Ref UserPoolClientName
+      UserPoolId: !Ref UserPool
+      GenerateSecret: !Ref ClientSecretEnabled
+      RefreshTokenValidity: !Ref RefreshTokenValidity
+      AccessTokenValidity: !Ref AccessTokenValidity
+      IdTokenValidity: 1
+      ExplicitAuthFlows:
+        - 'ALLOW_REFRESH_TOKEN_AUTH'
+        - 'ALLOW_USER_SRP_AUTH'
+        - 'ALLOW_USER_PASSWORD_AUTH'
+        - 'ALLOW_CUSTOM_AUTH'
+
+Outputs:
+
+  UserPoolId:
+    Description: "User Pool Id"
+    Value: !Ref UserPool
+
+  UserPoolClientId:
+    Description: "User Pool Client Id"
+    Value: !Ref UserPoolClient
+
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Environment Configuration"
+        Parameters:
+          - EnvName
+      - Label:
+          default: "Cognito Configuration"
+        Parameters:
+          - UserPoolName
+          - UserPoolClientName
+          - ClientSecretEnabled
+          - AccessTokenValidity
+          - RefreshTokenValidity
+      - Label:
+          default: "SES Configuration"
+        Parameters:
+          - SenderEmailIdentityArn
+
+    ParameterLabels:
+      EnvName:
+        default: "Environment Name"
+      UserPoolName:
+        default: "Cognito User Pool Name"
+      UserPoolClientName:
+        default: "Cognito User Pool Client Name"
+      ClientSecretEnabled:
+        default: "Enable Client Secret"
+      AccessTokenValidity:
+        default: "Access Token Validity (hours)"
+      RefreshTokenValidity:
+        default: "Refresh Token Validity (days)"
+      SenderEmailIdentityArn:
+        default: "SES Sender Email Identity ARN"

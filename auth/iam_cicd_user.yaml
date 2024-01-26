@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  This template creates an IAM role for CI/CD workflows, specifically for CICD Actions.
+  It defines the necessary permissions for interacting with AWS services like S3, CloudFormation, and others.
+
+Parameters:
+
+  ArtifactBucketName:
+    Type: String
+    Description: Name of the S3 bucket where the artifacts will be stored.
+
+  StackArns:
+    Type: List<String>
+    Description: List of ARNs of the CloudFormation stacks to update.
+
+Resources:
+
+  # IAM User for CICD Actions
+  CICDUser:
+    Type: 'AWS::IAM::User'
+    Properties:
+      Policies:
+        - PolicyName: CICDUserAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:Put*'
+                  - 's3:Get*'
+                  - 's3:List*'
+                Resource: !Sub 'arn:aws:s3:::${ArtifactBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:UpdateStack'
+                Resource: !Ref StackArns
+              - Effect: Allow
+                Action:
+                  - 'ssm:Get*'
+                  - 'ec2:*'
+                  - 'iam:List*'
+                  - 'iam:Get*'
+                  - 'iam:PassRole'
+                  - 'kms:Decrypt'
+                  - 'logs:*'
+                  - 'autoscaling:*'
+                  - 'elasticloadbalancing:*'
+                Resource: '*'
+
+  # Access Key for CICD IAM User
+  CICDUserAccessKey:
+    Type: 'AWS::IAM::AccessKey'
+    Properties:
+      UserName: !Ref CICDUser
+  
+  # Secrets to store CICD IAM User access keys
+  CICDUserSecret:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: CICDUserIAMUserKeys
+      Description: Secrets for CICD IAM User
+      SecretString: !Sub '{"accesskey": "${CICDUserAccessKey}", "secretkey":"${CICDUserAccessKey.SecretAccessKey}"}'
+
+Outputs:
+
+  CICDUserArn:
+    Description: 'ARN of the IAM role for CICD Actions.'
+    Value: !GetAtt CICDUser.Arn
+
+  CICDUserName:
+    Description: 'Name of the IAM role for CICD Actions.'
+    Value: !Ref CICDUser
+
+  SecretName:
+    Value: !Ref CICDUserSecret
+    Description: Name of the secret containing CICD Actions IAM user keys
+
+  SecretARN:
+    Value: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${CICDUserSecret}'
+    Description: ARN of the secret containing CICD Actions IAM user keys

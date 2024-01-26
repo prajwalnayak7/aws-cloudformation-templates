@@ -1,0 +1,59 @@
+
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  This CloudFormation template sets up an S3 bucket configured for static website hosting.
+  It includes parameters for customizing the bucket name and the names of the index and error documents.
+
+Parameters:
+
+  BucketName:
+    Description: 'Base name of the S3 bucket. Will be appended with the environment name.'
+    Type: 'String'
+    Default: 'artifact-store'
+    AllowedPattern: '^[a-z0-9.-]{3,63}$'
+    ConstraintDescription: 'Must include only numbers, lowercase letters, hyphens, and periods. Length between 3 and 63 characters.'
+
+  EnvName:
+    Description: 'The deployment environment name, used to differentiate between dev, staging, and production.'
+    Type: 'String'
+
+  IndexDocument:
+    Type: String
+    Default: "index.html"
+    Description: "Filename of the index document for the website."
+
+  ErrorDocument:
+    Type: String
+    Default: "error.html"
+    Description: "Filename of the error document for the website."
+
+Resources:
+
+  # S3 Bucket configured for static website hosting
+  StaticWebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${BucketName}-${EnvName}"
+      WebsiteConfiguration:
+        IndexDocument: !Ref IndexDocument
+        ErrorDocument: !Ref ErrorDocument
+
+  # Bucket policy to allow public read access to the website
+  WebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticWebsiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub arn:aws:s3:::${StaticWebsiteBucket}/*
+
+Outputs:
+
+  WebsiteURL:
+    Description: "URL for the website hosted on S3."
+    Value: !GetAtt StaticWebsiteBucket.WebsiteURL

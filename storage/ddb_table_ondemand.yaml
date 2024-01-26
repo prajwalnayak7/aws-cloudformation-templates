@@ -1,0 +1,70 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  This template creates a DynamoDB table with on-demand capacity and server-side encryption.
+  It allows customizable key schema definitions through parameters.
+
+Parameters:
+
+  EnvName:
+    Type: String
+    Description: The deployment environment name, used to differentiate resources in multiple environments.
+  
+  PrimaryKeyName:
+    Type: String
+    Description: Name of the primary key attribute for the DynamoDB table.
+
+  PrimaryKeyType:
+    Type: String
+    Default: 'S'
+    AllowedValues: ['S', 'N', 'B']
+    Description: Type of the primary key attribute (S for string, N for number, B for binary).
+
+  SortKeyName:
+    Type: String
+    Description: Name of the sort key attribute for the DynamoDB table.
+
+  SortKeyType:
+    Type: String
+    Default: 'S'
+    AllowedValues: ['S', 'N', 'B']
+    Description: Type of the sort key attribute (S for string, N for number, B for binary).
+
+  EnableSSE:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable server-side encryption with AWS managed KMS key.
+
+Resources:
+
+  # Define the DynamoDB table.
+  DDBTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: !Sub "GenericTable-${EnvName}"
+      AttributeDefinitions:
+        - AttributeName: !Ref PrimaryKeyName
+          AttributeType: !Ref PrimaryKeyType
+        - AttributeName: !Ref SortKeyName
+          AttributeType: !Ref SortKeyType
+      KeySchema:
+        - AttributeName: !Ref PrimaryKeyName
+          KeyType: 'HASH'
+        - AttributeName: !Ref SortKeyName
+          KeyType: 'RANGE'
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        Enabled: !If [EnableSSE, 'true', 'false']
+        SSEType: 'KMS'
+
+Outputs:
+
+  TableName:
+    Description: "The name of the DynamoDB table."
+    Value: !Ref DDBTable
+
+  TableArn:
+    Description: "The ARN of the DynamoDB table."
+    Value: !GetAtt DDBTable.Arn

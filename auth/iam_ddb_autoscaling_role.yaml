@@ -1,0 +1,61 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  This template creates an IAM role for DynamoDB auto-scaling with the necessary permissions. 
+  It uses parameterization for scalability and follows AWS best practices.
+
+Parameters:
+
+  AutoScalingRoleName:
+    Type: String
+    Description: The name of the IAM role for DynamoDB auto-scaling.
+
+Resources:
+
+  # IAM Role for DynamoDB auto-scaling
+  AutoScalingRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Ref AutoScalingRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [application-autoscaling.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Path: '/'
+      Policies:
+        - PolicyName: 'DynamoDBAutoScalingPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:DescribeTable'
+                  - 'dynamodb:UpdateTable'
+                  - 'cloudwatch:PutMetricAlarm'
+                  - 'cloudwatch:DescribeAlarms'
+                  - 'cloudwatch:GetMetricStatistics'
+                  - 'cloudwatch:SetAlarmState'
+                  - 'cloudwatch:DeleteAlarms'
+                Resource: '*'
+
+Outputs:
+
+  AutoScalingRoleArn:
+    Description: 'ARN of the IAM role for DynamoDB auto-scaling.'
+    Value: !GetAtt AutoScalingRole.Arn
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "IAM Role Configuration"
+        Parameters:
+          - AutoScalingRoleName
+    ParameterLabels:
+      AutoScalingRoleName:
+        default: "Auto Scaling Role Name"
