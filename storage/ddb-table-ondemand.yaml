@@ -7,6 +7,10 @@ Description: >
 
 Parameters:
 
+  TableName:
+    Type: String
+    Description: Name of the DynamoDB table.
+    
   EnvName:
     Type: String
     Description: The deployment environment name, used to differentiate resources in multiple environments.
@@ -43,7 +47,7 @@ Resources:
   DDBTable:
     Type: 'AWS::DynamoDB::Table'
     Properties:
-      TableName: !Sub "GenericTable-${EnvName}"
+      TableName: !Sub "${EnvName}-${TableName}"
       AttributeDefinitions:
         - AttributeName: !Ref PrimaryKeyName
           AttributeType: !Ref PrimaryKeyType

@@ -10,6 +10,7 @@ Parameters:
   AutoScalingRoleName:
     Type: String
     Description: The name of the IAM role for DynamoDB auto-scaling.
+    Default: 'DynamoDBAutoScalingRole'
 
 Resources:
 

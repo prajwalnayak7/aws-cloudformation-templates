@@ -46,11 +46,6 @@ Parameters:
     Default: t2.micro
     ConstraintDescription: must be a valid EC2 instance type.
 
-  KeyPairName:
-    Type: String
-    Default: bastion-access
-    Description: The name of the key pair to use for the instance.
-
   MinReplicas:
     Type: Number
     Default: 1
@@ -86,10 +81,9 @@ Parameters:
     Default: 80
     Description: Health check port
 
-  SSLCertificateArn:
+  DomainName:
     Type: String
-    Default: arn:aws:acm:us-east-1:356594127157:certificate/ac0b65c5-37f2-411f-8930-94d9bd91090d
-    Description: SSL certificate ARN
+    Description: Domain name for the load balancer SSL certificate
 
   ArtifactBucketName:
     Type: String
@@ -220,7 +214,6 @@ Resources:
         DisableApiTermination: true
         ImageId: !Ref AmiId
         InstanceType: !Ref InstanceType
-        KeyName: !Ref KeyPairName
         SecurityGroupIds:
           - !Ref LTSecurityGroup
         UserData: !Base64
@@ -353,20 +346,22 @@ Resources:
       Port: 443
       Protocol: "HTTPS"
       Certificates:
-        - CertificateArn: !Ref SSLCertificateArn
+        - CertificateArn: !Ref SSLCertificate
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref AppTargetGroup
+
+  SSLCertificate:
+    Type: 'AWS::CertificateManager::Certificate'
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
 
 Outputs:
 
   AppServerGroup:
     Description: The name of the Auto Scaling Group.
     Value: !Ref AppServerGroup
-  
-  AppServerGroupARN:
-    Description: The ARN of the Auto Scaling Group.
-    Value: !GetAtt AppServerGroup.Arn
   
   AppLoadBalancer:
     Description: The name of the Load Balancer.
@@ -388,6 +383,10 @@ Outputs:
     Description: The ARN of the Target Group.
     Value: !Ref AppTargetGroup
 
+  CertificateArn:
+    Description: 'ARN of the SSL certificate'
+    Value: !Ref SSLCertificate
+
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -406,7 +405,6 @@ Metadata:
         Parameters:
           - AmiId
           - InstanceType
-          - KeyPairName
           - MinReplicas
           - MaxReplicas
           - DesiredInstanceCount
@@ -417,7 +415,7 @@ Metadata:
         Parameters:
           - HealthCheckPath
           - HealthCheckPort
-          - SSLCertificateArn
+          - DomainName
       - Label:
           default: "Artifact Storage Configuration"
         Parameters:
@@ -443,8 +441,6 @@ Metadata:
         default: "AMI ID"
       InstanceType:
         default: "EC2 Instance Type"
-      KeyPairName:
-        default: "Key Pair Name"
       MinReplicas:
         default: "Minimum ASG Replicas"
       MaxReplicas:
@@ -459,8 +455,8 @@ Metadata:
         default: "Health Check Path"
       HealthCheckPort:
         default: "Health Check Port"
-      SSLCertificateArn:
-        default: "SSL Certificate ARN"
+      DomainName:
+        default: "Domain Name for SSL Certificate"
       ArtifactBucketName:
         default: "Artifact S3 Bucket Name"
       ApplicationArtifact:

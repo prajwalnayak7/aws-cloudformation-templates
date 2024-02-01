@@ -1,8 +1,7 @@
-
 AWSTemplateFormatVersion: '2010-09-09'
 
 Description: >
-  This CloudFormation template creates an S3 bucket for storing debain build 
+  This CloudFormation template creates an S3 bucket for storing Debian build 
   artifacts, applies a policy to the bucket for access control, and grants 
   read access to a specified list of AWS accounts.
 
@@ -41,20 +40,20 @@ Resources:
             Effect: 'Allow'
             Principal:
               AWS: 
-                Fn::Sub: arn:aws:iam::${{AWS::AccountId}}:root
+                Fn::Sub: arn:aws:iam::${AWS::AccountId}:root
             Action: 's3:*'
             Resource:
-              Fn::Sub: arn:aws:s3:::${{ArtifactBucket}}/*
+              Fn::Sub: arn:aws:s3:::${ArtifactBucket}/*
           - Sid: 'AllowExternalAccountReadAccess'
             Effect: 'Allow'
             Principal:
               AWS: 
                 Fn::Join: 
-                  - ','
-                  - Fn::GetAtt: [AccountIdList, Arn]
+                  - ''
+                  - - Fn::Sub: arn:aws:iam::${AWS::AccountId}:root
             Action: 's3:GetObject'
             Resource:
-              Fn::Sub: arn:aws:s3:::${{ArtifactBucket}}/*
+              Fn::Sub: arn:aws:s3:::${ArtifactBucket}/*
 
 Outputs:
 

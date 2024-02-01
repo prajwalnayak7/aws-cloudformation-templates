@@ -7,6 +7,10 @@ Description: >
 
 Parameters:
 
+  TableName:
+    Type: String
+    Description: Name of the DynamoDB table.
+
   EnvName:
     Type: String
     Description: The deployment environment name, used to differentiate resources in multiple environments.
@@ -37,7 +41,7 @@ Parameters:
 
   ReadCapacityUnits:
     Type: Number
-    Default: 10
+    Default: 1
     Description: Default read capacity units for the DynamoDB table.
 
   WriteCapacityUnits:
@@ -47,41 +51,38 @@ Parameters:
 
   MinReadCapacity:
     Type: Number
-    Default: 10
+    Default: 1
     Description: Minimum read capacity for auto scaling.
 
   MaxReadCapacity:
     Type: Number
-    Default: 50
+    Default: 1
     Description: Maximum read capacity for auto scaling.
 
   MinWriteCapacity:
     Type: Number
-    Default: 10
+    Default: 1
     Description: Minimum write capacity for auto scaling.
 
   MaxWriteCapacity:
     Type: Number
-    Default: 50
+    Default: 1
     Description: Maximum write capacity for auto scaling.
 
   AutoScalingTargetValue:
     Type: Number
+    Default: 70
     Description: Target value for write capacity auto-scaling.
 
   AutoScalingScaleInCooldown:
     Type: Number
+    Default: 60
     Description: Scale-in cooldown period for write capacity auto-scaling.
 
   AutoScalingScaleOutCooldown:
     Type: Number
+    Default: 60
     Description: Scale-out cooldown period for write capacity auto-scaling.
-
-  EnableSSE:
-    Type: String
-    Default: 'true'
-    AllowedValues: ['true', 'false']
-    Description: Enable server-side encryption with AWS managed KMS key.
 
 
 Resources:
@@ -90,7 +91,7 @@ Resources:
   DDBTable:
     Type: 'AWS::DynamoDB::Table'
     Properties:
-      TableName: !Sub "GenericTable-${EnvName}"
+      TableName: !Sub "${EnvName}-${TableName}"
       AttributeDefinitions:
         - AttributeName: !Ref PrimaryKeyName
           AttributeType: !Ref PrimaryKeyType
@@ -104,9 +105,6 @@ Resources:
       ProvisionedThroughput: 
         ReadCapacityUnits: !Ref ReadCapacityUnits
         WriteCapacityUnits: !Ref WriteCapacityUnits
-      SSESpecification:
-        Enabled: !If [EnableSSE, 'true', 'false']
-        SSEType: 'KMS'
 
   # Auto-scaling setup for the DynamoDB table's write capacity
   TableWriteCapacityScalableTarget:
@@ -186,7 +184,6 @@ Metadata:
           - SortKeyType
           - ReadCapacityUnits
           - WriteCapacityUnits
-          - EnableSSE
       - Label:
           default: "Auto Scaling Configuration"
         Parameters:
@@ -213,8 +210,6 @@ Metadata:
         default: "Read Capacity Units"
       WriteCapacityUnits:
         default: "Write Capacity Units"
-      EnableSSE:
-        default: "Enable Server-Side Encryption"
       ScalingRoleArn:
         default: "Scaling Role ARN"
       MinReadCapacity:

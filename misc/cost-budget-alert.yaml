@@ -19,13 +19,6 @@ Parameters:
   Email1:
     Description: "Primary email address to receive budget alerts"
     Type: String
-    AllowedPattern: "^[_A-Za-z0-9-\\+]+(\\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\\.[A-Za-z0-9]+)*(\\.[A-Za-z]{2,})$"
-
-  Email2:
-    Description: "Additional email address to receive budget alerts (optional)"
-    Type: String
-    AllowedPattern: "^[_A-Za-z0-9-\\+]+(\\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\\.[A-Za-z0-9]+)*(\\.[A-Za-z]{2,})$"
-    Default: ""
 
 Resources:
   
@@ -58,8 +51,6 @@ Resources:
             ThresholdType: PERCENTAGE
           Subscribers:
             - Address: !Ref Email1
-              SubscriptionType: EMAIL
-            - Address: !If [!Equals [!Ref Email2, ''], !Ref AWS::NoValue, !Ref Email2]
               SubscriptionType: EMAIL
 
 Outputs:
