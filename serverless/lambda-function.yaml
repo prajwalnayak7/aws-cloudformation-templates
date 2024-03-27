@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "AWS CloudFormation template to create a Lambda function with an IAM role."
+
+Parameters:
+
+  EnvName:
+    Type: 'String'
+    Description: 'The deployment environment name, used to differentiate between dev, staging, and production.'
+
+  LambdaFunctionName:
+    Description: "Name for the Lambda function."
+    Type: String
+
+  Handler:
+    Description: "Handler for the Lambda function."
+    Type: String
+    Default: "lambda_function.lambda_handler"
+
+  Timeout:
+    Description: "Timeout for the Lambda function (in seconds)."
+    Type: Number
+    Default: 30
+
+  MemorySize:
+    Description: "Memory size for the Lambda function (in MB)."
+    Type: Number
+    Default: 128
+
+  # ImageUri:
+  #   Description: "Name for the Lambda function."
+  #   Type: String
+
+Resources:
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${LambdaFunctionName}-role-${EnvName}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "LambdaExecutionPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "*"
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${LambdaFunctionName}-${EnvName}"
+      Handler: !Ref Handler
+      Runtime: "python3.8"
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: !Ref Timeout
+      MemorySize: !Ref MemorySize
+      Environment:
+        Variables:
+          ENV_VAR: "value"
+      # VpcConfig:
+      #   SecurityGroupIds: ["sg-xxxxxxxx"]
+      #   SubnetIds: ["subnet-xxxxxxxx", "subnet-yyyyyyyy"]
+      # ImageUri: !Ref ImageUri
+      Code:
+        ZipFile: |
+          import json
+          def lambda_handler(event, context):
+              print('Hello, Lambda!')
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Hello from Lambda!')
+              }
+
+Outputs:
+
+  LambdaFunctionArn:
+    Description: "ARN of the created Lambda function."
+    Value: !GetAtt LambdaFunction.Arn
+
+  LambdaFunctionNameOutput:
+    Description: "Name of the created Lambda function."
+    Value: !Ref LambdaFunctionName
+
+  LambdaExecutionRoleArn:
+    Description: "ARN of the created Lambda execution role."
+    Value: !GetAtt LambdaExecutionRole.Arn

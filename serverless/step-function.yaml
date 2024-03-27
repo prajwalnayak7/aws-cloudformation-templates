@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "AWS CloudFormation template to create a Step Function with an IAM role."
+
+Parameters:
+
+  EnvName:
+    Type: 'String'
+    Description: 'The deployment environment name, used to differentiate between dev, staging, and production.'
+
+  StateMachineName:
+    Description: "Name for the Step function."
+    Type: String
+
+  LambdaFunctionArn:
+    Description: "ARN of the Lambda function to be invoked."
+    Type: String
+
+  StateMachineType:
+    Description: "Type of the Step Function state machine."
+    Type: String
+    Default: "STANDARD"
+
+Resources:
+
+  StepFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "states.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "StepFunctionRolePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: !Ref LambdaFunctionArn
+
+  MyStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub "${StateMachineName}-${EnvName}"
+      DefinitionString:
+        Fn::Sub:
+          - |
+            {
+              "Comment": "A simple AWS Step Functions state machine that coordinates an execution flow.",
+              "StartAt": "Wait",
+              "States": {
+                "Wait": {
+                  "Type": "Wait",
+                  "Seconds": 30,
+                  "Next": "InvokeLambda"
+                },
+                "InvokeLambda": {
+                  "Type": "Task",
+                  "Resource": "${LambdaFunctionArn}",
+                  "End": true
+                }
+              }
+            }
+          - { LambdaFunctionArn: !Ref LambdaFunctionArn }
+      RoleArn: !GetAtt StepFunctionRole.Arn
+      StateMachineType: !Ref StateMachineType
+
+Outputs:
+
+  StepFunctionArn:
+    Description: "ARN of the created Step Function."
+    Value: !Ref MyStateMachine
+
+  StepFunctionRoleArn:
+    Description: "ARN of the created IAM role for Step Function."
+    Value: !GetAtt StepFunctionRole.Arn

@@ -1,0 +1,108 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  This CloudFormation template creates an S3 bucket with specific configurations
+  for CORS and access policies. It supports different environments and custom domain settings
+  for CORS, providing flexibility for development, staging, and production usage.
+
+Parameters:
+
+  BucketName:
+    Type: 'String'
+    Description: 'Base name of the S3 bucket. Will be appended with the environment name.'
+    Default: 'store'
+    AllowedPattern: '^[a-z0-9.-]{3,63}$'
+    ConstraintDescription: 'Must include only numbers, lowercase letters, hyphens, and periods. Length between 3 and 63 characters.'
+
+  EnvName:
+    Type: 'String'
+    Description: 'The deployment environment name, used to differentiate between dev, staging, and production.'
+
+  ClientDomain:
+    Description: 'The domain of the client, used for setting up CORS rules.'
+    Type: 'String'
+    Default: 'https://staging.example.com/'
+
+Resources:
+
+  # S3 Bucket for storing various artifacts, configured per environment
+  BucketStore:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub "${BucketName}-${EnvName}"
+      AccessControl: PublicRead
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        IgnorePublicAcls: false
+        BlockPublicPolicy: false
+        RestrictPublicBuckets: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - !Ref ClientDomain # Can make it * for testing
+            AllowedMethods:
+              - 'GET'
+              - 'PUT'
+              - 'POST'
+              - 'DELETE'
+            AllowedHeaders:
+              - '*'
+            ExposedHeaders:
+              - 'ETag'
+            MaxAge: 3000
+    DeletionPolicy: Retain  # Retain the bucket when stack is deleted (adjust as needed)
+
+  # Policy for the S3 bucket, including permissions and conditions for access
+  BucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref BucketStore
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: 'AllowSameAccountAccess'
+            Effect: 'Allow'
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 's3:*'
+            Resource: !Sub 'arn:aws:s3:::${BucketStore}/*'
+          - Sid: 'AllowUploadsWithPresignedURL'
+            Effect: 'Allow'
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 's3:PutObject'
+            Resource: !Sub 'arn:aws:s3:::${BucketStore}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': 'bucket-owner-full-control'
+          - Sid: 'AllowPublicReadForPublicPrefix'
+            Effect: 'Allow'
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub 'arn:aws:s3:::${BucketStore}/public/*'
+
+Outputs:
+
+  BucketNameOutput:
+    Description: 'The name of the S3 bucket.'
+    Value: 
+      Ref: BucketStore
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'S3 Bucket Configuration'
+        Parameters:
+          - BucketName
+          - EnvName
+          - BrowserClientDomain
+    ParameterLabels:
+      BucketName:
+        default: 'S3 Bucket Name'
+      EnvName:
+        default: 'Environment Name'
+      ClientDomain:
+        default: 'Client Domain'

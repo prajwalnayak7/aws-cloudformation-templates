@@ -1,0 +1,30 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "AWS CloudFormation template to create an Amazon SNS topic with specified properties."
+
+Parameters:
+
+  EnvName:
+    Type: 'String'
+    Description: 'The deployment environment name, used to differentiate between dev, staging, and production.'
+
+  Name:
+    Description: "Name of the SNS topic. (Must end with .fifo for FIFO topics)"
+    Type: String
+
+Resources:
+
+  MySNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${Name}-${EnvName}"
+      FifoTopic: true
+      ContentBasedDeduplication: false # Can be true ONLY for FifoTopic, remove for otherwise
+
+Outputs:
+
+  TopicArn:
+    Description: "ARN of the SNS topic."
+    Value: !Ref MySNSTopic
+    Export:
+      Name: !Sub "${AWS::StackName}-TopicArn"

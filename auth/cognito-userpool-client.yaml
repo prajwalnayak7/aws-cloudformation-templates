@@ -117,14 +117,14 @@ Resources:
             </head>
             <body>
               <div class="container">
-                <div class="header">Welcome to The Company!</div>
+                <div class="header">Welcome to Company</div>
                 <div class="content">
                   Your account has been successfully created.<br>
                   Please use the following verification code to complete your registration: <strong>{####}</strong><br>
                   If you did not request this code, please ignore this message.
                 </div>
                 <div class="footer">
-                  &copy; 2024 The Company. All rights reserved.
+                  &copy; 2024 company. All rights reserved.
                 </div>
               </div>
             </body>

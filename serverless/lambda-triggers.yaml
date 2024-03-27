@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "AWS CloudFormation template to create triggers for a Lambda function."
+
+Parameters:
+
+  EnvName:
+    Type: 'String'
+    Description: 'The deployment environment name, used to differentiate between dev, staging, and production.'
+
+  LambdaFunctionName:
+    Description: "Name of the existing Lambda function."
+    Type: String
+
+  SQSQueueName:
+    Description: "Name of the existing SQS queue."
+    Type: String
+
+  SNSTopicName:
+    Description: "Name of the existing SNS topic."
+    Type: String
+
+  EventBridgeRuleName:
+    Description: "Name of the existing EventBridge rule."
+    Type: String
+
+  DynamoDBTableName:
+    Description: "Name of the existing DynamoDB table."
+    Type: String
+
+  RestApiId:
+    Description: "ID of the existing API Gateway REST API."
+    Type: String
+
+  S3BucketName:
+    Description: "Name of the existing S3 bucket."
+    Type: String
+
+Resources:
+
+  LambdaSQSTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 1
+      EventSourceArn: !GetAtt [SQSQueue, Arn]
+      FunctionName: !Ref LambdaFunctionName
+      Enabled: true
+
+  LambdaSNSTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt [SNSTopic, Arn]
+      FunctionName: !Ref LambdaFunctionName
+      Enabled: true
+      BatchSize: 10
+      StartingPosition: "LATEST"
+
+  LambdaEventBridgeTrigger:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - "aws.dynamodb"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource:
+            - "dynamodb.amazonaws.com"
+          eventName:
+            - "UpdateItem"
+          requestParameters:
+            tableKey:
+              tableName:
+                - !Ref DynamoDBTableName
+      Targets:
+        - Arn: !GetAtt [LambdaFunction, Arn]
+          Id: "EventBridgeTarget"
+
+  LambdaDynamoDBTrigger:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !Ref LambdaFunctionName
+      Principal: "dynamodb.amazonaws.com"
+      SourceArn: !GetAtt [DynamoDBTable, Arn]
+
+  LambdaAPIGWTrigger:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !Ref LambdaFunctionName
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApiId}/*/*/*"
+
+  LambdaS3Trigger:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt [S3Bucket, Arn]
+      FunctionName: !Ref LambdaFunctionName
+      Enabled: true
+      BatchSize: 10
+      StartingPosition: "TRIM_HORIZON"
+
+Outputs:
+
+  SQSQueue:
+    Description: "SQS Queue ARN"
+    Value: !GetAtt [SQSQueue, Arn]
+
+  SNSTopic:
+    Description: "SNS Topic ARN"
+    Value: !GetAtt [SNSTopic, Arn]
+
+  EventBridgeRule:
+    Description: "EventBridge Rule ARN"
+    Value: !Ref LambdaEventBridgeTrigger
+
+  DynamoDBTable:
+    Description: "DynamoDB Table ARN"
+    Value: !GetAtt [DynamoDBTable, Arn]
+
+  RestApi:
+    Description: "API Gateway REST API ID"
+    Value: !Ref RestApiId
+    
+  S3Bucket:
+    Description: "S3 Bucket ARN"
+    Value: !GetAtt [S3Bucket, Arn]

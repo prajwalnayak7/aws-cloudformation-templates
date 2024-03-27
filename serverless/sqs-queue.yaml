@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "AWS CloudFormation template to create an Amazon SQS queue with CloudWatch alarms and parameterized configurations."
+
+Parameters:
+
+ EnvName:
+    Type: 'String'
+    Description: 'The deployment environment name, used to differentiate between dev, staging, and production.'
+
+ QueueName:
+    Description: "Name of the SQS queue. (Must end with .fifo for FIFO queues)"
+    Type: String
+    Default: "SampleQueue.fifo"
+
+ DelaySeconds:
+    Description: "The time in seconds that the delivery of all messages in the queue will be delayed."
+    Type: Number
+    Default: 0
+
+ MaximumMessageSize:
+    Description: "The limit of how many bytes a message can contain before Amazon SQS rejects it."
+    Type: Number
+    Default: 262144 # 256 KB
+
+ MessageRetentionPeriod:
+    Description: "The number of seconds Amazon SQS retains a message if it does not get deleted."
+    Type: Number
+    Default: 345600 # 4 days
+
+ ReceiveMessageWaitTimeSeconds:
+    Description: "The duration (in seconds) for which a ReceiveMessage call will wait for a message to arrive."
+    Type: Number
+    Default: 0
+
+ VisibilityTimeout:
+    Description: "The duration (in seconds) that the received messages are hidden from subsequent retrieve requests after being retrieved by a ReceiveMessage request."
+    Type: Number
+    Default: 30
+
+Resources:
+
+ MyQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${QueueName}-${EnvName}"
+      DelaySeconds: !Ref DelaySeconds
+      MaximumMessageSize: !Ref MaximumMessageSize
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      ReceiveMessageWaitTimeSeconds: !Ref ReceiveMessageWaitTimeSeconds
+      VisibilityTimeout: !Ref VisibilityTimeout
+      FifoQueue: true
+      ContentBasedDeduplication: true # Can be true ONLY for FifoQueue, remove for otherwise
+
+Outputs:
+
+ QueueURL:
+    Description: "URL of the new Amazon SQS Queue"
+    Value: !Ref MyQueue
+
+ QueueARN:
+    Description: "ARN of the new Amazon SQS Queue"
+    Value: !GetAtt MyQueue.Arn
+
+ QueueName:
+    Description: "Name of the new Amazon SQS Queue"
+    Value: !GetAtt MyQueue.QueueName
